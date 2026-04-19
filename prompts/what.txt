@@ -1,0 +1,14 @@
+Topic: Inference Engineering
+Preface: There are many levels of abstractions, and each layer requires a different set of skills. Some require the minimal knowledge of other layers. 
+Task:
+For each level of abstraction, elaborate:
+1. what it is
+2. why is it required
+3. what impact does it have in the stack
+4. how companies use it 
+5. what are the first implementations + latest work being done
+6. how impactful it is
+7. how can one contribute, or become an expert in it 
+8. what are the standard resources
+9. keywords glossary from the basic (initial) to more intermediate and advanced (ending)
+10. why to pursue, who should do it, what to expect.

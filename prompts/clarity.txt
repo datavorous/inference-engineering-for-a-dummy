@@ -1,0 +1,31 @@
+Topic: Clarity Extraction
+Context: During a meeting, I take handwritten notes, they are messy and dont have any fixed structure. To start the work, clarity is required. 
+Subtask: Extract the text from the image, and try to find the link between each word or symbol.
+Task:
+Get the overall gist of the meeting.
+Create sections:
+- Summary
+- Keywords (from first priority to the last)
+- Meta Work (requirements, human connections required, waiting for something etc.)
+- Concise timeline of the work that is to be done from earliest to last
+    - {topic} {subtopic} {for what reason} {assumed difficulty}
+    - keywords to explore [list]
+- [Topic Name]
+    - what
+    - why
+    - how to start 
+    - what questions to ask [list]
+    - standard resources to look into 
+        - blogs/articles
+        - papers
+        - books
+        - youtube playlists
+    - how to get started immediately
+    - outcomes
+        - incrementally mention them [as we will split the work into many mechanical pieces]
+            - first pass [most basic setup]
+            - second pass [mention what is to be done]
+            {repeat till you reach final stage}
+    - what i can learn from it, assuming the field is [new and booming], what resources can I generate from my learnings and experience [list of ideas]
+Output Format: Text Chat [no artifacts]
+
