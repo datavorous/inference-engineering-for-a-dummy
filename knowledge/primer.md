@@ -31,28 +31,21 @@ graph LR
 The team's clusters have NVIDIA GPUs. Each GPU has its own **VRAM** (Video RAM) - fast memory that sits right on the card. The model weights must fit in VRAM to run efficiently.
 
 
-## Part 3: The Two Clusters - Ada and Turing
+## Part 3: The Turing Cluster
 
-The team has access to two GPU clusters. Think of a cluster as a large collection of computers ("nodes") connected by a fast network, each node having several GPUs.
+The team works on the **Turing cluster** — a homogeneous collection of computers ("nodes") connected by a fast network, each node equipped with the same GPU hardware.
 
 ```mermaid
 graph TB
-    subgraph Ada["Ada Cluster (~90 nodes)"]
-        direction TB
-        A1[~40 nodes<br/>GTX 1080 GPUs<br/>11GB VRAM each<br/>older CUDA only]
-        A2[~50 nodes<br/>RTX 2080/3080 GPUs<br/>11GB VRAM each<br/>better CUDA support]
-    end
-
     subgraph Turing["Turing Cluster (pay-per-use)"]
         direction TB
-        T1[LS40 / RTX6000 GPUs<br/>48GB VRAM each<br/>much more powerful]
+        T1[LS40 / RTX6000 GPUs<br/>48GB VRAM each<br/>up to 4 GPUs per job = 192GB ceiling]
     end
 
-    Ada -->|free but constrained| U[Your Research Work]
-    Turing -->|paid but capable| U
+    Turing -->|all work runs here| U[Your Research Work]
 ```
 
-### What "11GB VRAM" means in practice
+### What "48GB VRAM" means in practice
 
 A model is stored as numbers. How many bytes those numbers take depends on **precision** (how many bits each number uses):
 
@@ -63,12 +56,10 @@ A model is stored as numbers. How many bytes those numbers take depends on **pre
 | INT8 (8-bit integer) | 8 bits = 1 byte | ~7 GB |
 | INT4 (4-bit integer) | 4 bits = 0.5 bytes | ~3.5 GB |
 
-With 4 GPUs at 11GB each = 44GB total. This means:
-- **7B params at FP32** → needs 28GB → fits across 4 GPUs ✓
-- **10B params at FP16** → needs 20GB → fits across 4 GPUs ✓
-- **70B params at FP16** → needs 140GB → does NOT fit ✗
-
-The Turing cluster's 48GB cards are about 4× more capable per card.
+With 4 GPUs at 48GB each = 192GB total. This means:
+- **7B params at FP32** → needs 28GB → fits on a single GPU ✓
+- **70B params at FP16** → needs 140GB → fits across 3 GPUs ✓
+- **70B params at FP32** → needs 280GB → does NOT fit across 4 GPUs ✗
 
 
 ## Part 4: The Two Phases of LLM Inference (Prefill vs Decode)
@@ -126,9 +117,7 @@ graph BT
 No software trick can exceed these physical limits.
 
 **Relevant to our cluster:**
-- GTX 1080: old, limited CUDA version support, only 11GB VRAM
-- RTX 2080/3080: better, but still 11GB VRAM
-- RTX 6000 (Turing): 48GB VRAM, modern CUDA, much more capable
+- LS40 / RTX 6000 (Turing): 48GB VRAM, modern CUDA, capable of large model workloads
 
 **Impact on you:** When a model run crashes with "CUDA out of memory", this layer is why. The fix is either a smaller model, lower precision, or spreading across more GPUs.
 
@@ -291,7 +280,7 @@ graph TB
 
 **Why "cross-node" communication is the hard part:**
 
-Within a single node (4 GPUs), NVIDIA's NVLink connects them at ~600 GB/s. Between nodes, you rely on InfiniBand or Ethernet, which is ~10-200 GB/s. This bottleneck is exactly why the Ada cluster struggles:
+Within a single node (4 GPUs), NVIDIA's NVLink connects them at ~600 GB/s. Between nodes, you rely on InfiniBand or Ethernet, which is ~10-200 GB/s.
 
 ```mermaid
 flowchart LR
@@ -303,10 +292,10 @@ flowchart LR
     subgraph Node2["Node 2 (gnode02)"]
         G5[GPU 0] <-->|NVLink| G6[GPU 1]
     end
-    Node1 <-->|InfiniBand ~100GB/s<br/>10x slower<br/>CURRENT BOTTLENECK| Node2
+    Node1 <-->|InfiniBand ~100GB/s<br/>10x slower than NVLink| Node2
 ```
 
-This is why the meeting notes say "distribute to multiple GPUs across gnodes: not feasible due to network bottleneck."
+This bandwidth gap is why single-node 4-GPU is the easiest starting point before investing in cross-node training.
 
 
 ### Layer 6: Serving Infrastructure and Production
@@ -348,7 +337,7 @@ graph LR
     INT8 -->|quantize| INT4["INT4<br/>4-bit integer<br/>noticeable accuracy loss<br/>0.5 bytes/param"]
 ```
 
-A 7B model at FP32 = ~28GB. The same model at INT4 = ~3.5GB. That is 8× smaller, and can fit on a single 11GB GPU card on Ada.
+A 7B model at FP32 = ~28GB. The same model at INT4 = ~3.5GB. That is 8× smaller, and fits easily on a single 48GB Turing card.
 
 **Other key techniques:**
 
@@ -373,7 +362,6 @@ mindmap
       1TB tmp has 7-day auto-delete
       No shared model cache → repeated downloads
     Compute
-      Ada GPUs old 1080s, limited CUDA
       Cross-node network bottleneck InfiniBand underperforming
       4-day wall-time job limit
       Less than 10 percent GPU utilization
@@ -400,16 +388,16 @@ graph TB
     Share1 -->|scp over network = slow| Tmp
 ```
 
-**The recommendation** from the team: Buy a NAS (Network Attached Storage) device, replicate it to Ada and Turing, and use it as a shared model/data cache. This would eliminate the repeated downloading of the same models by every student.
+**The recommendation** from the team: Buy a NAS (Network Attached Storage) device, replicate it to Turing, and use it as a shared model/data cache. This would eliminate the repeated downloading of the same models by every student.
 
 ### The Compute Problem in Detail
 
-| Scenario | Ada 1080 (4 GPUs, 44GB total) | Turing RTX6000 (4 GPUs, 192GB total) |
-|---|---|---|
-| 8B param model FP16 training | 4 days (if no OOM) | 1 day |
-| 70B param model | Impossible | Just barely fits |
-| Flash-attention optimization | Not supported | Supported |
-| FP8 / mxfp4 | Not supported | Not supported (needs H/B series) |
+| Scenario | Turing RTX6000 (4 GPUs, 192GB total) |
+|---|---|
+| 8B param model FP16 training | ~1 day |
+| 70B param model FP16 | Just barely fits |
+| Flash-attention optimization | Supported |
+| FP8 / mxfp4 | Not supported (needs H/B series) |
 
 
 ## Part 7: The Work Plan - What You Will Actually Do
@@ -419,13 +407,13 @@ flowchart TD
     T1["Step 1: Cluster Access<br/>VPN, SSH, confirm which accounts you have<br/>📍 Admin - just do it"]
     T2["Step 2: Environment Setup<br/>Assess node, set cache dirs, create conda env in share1<br/>📍 Layer 3 - Frameworks"]
     T3["Step 3: Proof of Life<br/>Verify GPU, run dummy inference on opt-125m<br/>📍 Layer 1+3"]
-    T4["Step 4: Model Sizing<br/>Decide precision - what fits in 44GB?<br/>📍 Layer 7 - Model Optimization"]
+    T4["Step 4: Model Sizing<br/>Decide precision - what fits in 192GB?<br/>📍 Layer 7 - Model Optimization"]
     T5["Step 5: Data Pipeline<br/>HF cache in share1, streaming datasets, no I/O stalls<br/>📍 Layer 3"]
     T6["Step 6: Single-node Training<br/>1 GPU first, then torchrun 4 GPUs, checkpoint every run<br/>📍 Layer 1+2+3"]
     T7["Step 7: Benchmarking Baseline<br/>Measure GPU utilization, throughput, latency from day one<br/>📍 All layers"]
     T8["Step 8: Docker<br/>Containerize the working env - pin everything<br/>📍 Layer 3+6"]
     T9["Step 9: LLM Serving as API<br/>vLLM on single node, expose endpoint<br/>📍 Layer 4+6"]
-    T10["Step 10: Multi-node Training<br/>Investigate InfiniBand, fix NCCL, cross-node gradients<br/>📍 Layer 5"]
+    T10["Step 10: Multi-nodeV Training<br/>Investigate InfiniBand, fix NCCL, cross-node gradients<br/>📍 Layer 5"]
     T11["Step 11: Optimization<br/>Mixed precision, gradient compression, quantization<br/>📍 Layer 7"]
     T12["Step 12: Kubernetes<br/>Wrap serving and training in K8s, self-serve infra<br/>📍 Layer 5+6"]
 
@@ -445,7 +433,7 @@ flowchart TD
 **What changed from the original and why:**
 
 - Docker moved from step 2 to step 8 - you containerize a *working* environment, not a hypothetical one
-- Quantization/model sizing moved from step 8 to step 4 - you need to know what precision fits in 44GB *before* you try to run training, not after serving is working
+- Quantization/model sizing moved from step 8 to step 4 - you need to know what precision fits in 192GB *before* you try to run training, not after serving is working
 - Benchmarking moved from after serving to step 7 - you need a baseline from the moment something runs, otherwise you can't tell if anything you do later is an improvement
 - Data pipeline is now a prerequisite to training, not a parallel branch - cache must be in place before training starts or you'll hit I/O stalls
 - Multi-node and serving are now independent branches from Docker - fixing InfiniBand doesn't gate serving a model; they can proceed in parallel
@@ -518,8 +506,7 @@ Then: set cache dirs, create conda env in share1, install torch pinned to your C
 ```mermaid
 graph TB
     subgraph Physical["Physical Layer"]
-        GPU1["Ada GPUs<br/>11GB VRAM each<br/>1080/2080/3080"]
-        GPU2["Turing GPUs<br/>48GB VRAM each<br/>LS40/RTX6000"]
+        GPU2["Turing GPUs<br/>48GB VRAM each<br/>LS40/RTX6000<br/>homogeneous cluster"]
         IB["InfiniBand<br/>inter-node network<br/>⚠️ currently bottlenecked"]
         NAS_hw["Proposed NAS<br/>shared model/data cache"]
     end
@@ -538,7 +525,7 @@ graph TB
 
     Physical --> Software --> Serving
 
-    GPU1 & GPU2 -->|run| Docker
+    GPU2 -->|run| Docker
     Docker -->|contains| PyTorch
     PyTorch -->|uses| NCCL
     NCCL -->|syncs across| IB
